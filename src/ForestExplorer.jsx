@@ -1,8 +1,88 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+
+const WEAPON_OPTIONS = [
+  {
+    id: 'assault',
+    label: 'Assault Rifle',
+    path: '/models/Ultimate%20Guns%20Pack-zip/Assault%20Rifle/AssaultRifle_4.fbx',
+    scale: [0.012, 0.012, 0.012],
+    rotation: [0, Math.PI, 0],
+    position: [0.08, -0.12, 0.05]
+  },
+  {
+    id: 'smg',
+    label: 'Submachine Gun',
+    path: '/models/Ultimate%20Guns%20Pack-zip/Submachine%20Gun/SubmachineGun_3.fbx',
+    scale: [0.012, 0.012, 0.012],
+    rotation: [0, Math.PI, 0],
+    position: [0.08, -0.12, 0.05]
+  },
+  {
+    id: 'shotgun',
+    label: 'Shotgun',
+    path: '/models/Ultimate%20Guns%20Pack-zip/Shotgun/Shotgun_3.fbx',
+    scale: [0.012, 0.012, 0.012],
+    rotation: [0, Math.PI, 0],
+    position: [0.08, -0.12, 0.05]
+  },
+  {
+    id: 'sniper',
+    label: 'Sniper Rifle',
+    path: '/models/Ultimate%20Guns%20Pack-zip/Sniper%20Rifle/SniperRifle_4.fbx',
+    scale: [0.012, 0.012, 0.012],
+    rotation: [0, Math.PI, 0],
+    position: [0.08, -0.12, 0.05]
+  },
+  {
+    id: 'pistol',
+    label: 'Pistol',
+    path: '/models/Ultimate%20Guns%20Pack-zip/Pistol/Pistol_3.fbx',
+    scale: [0.014, 0.014, 0.014],
+    rotation: [0, Math.PI, 0],
+    position: [0.1, -0.15, 0.1]
+  }
+];
+
+const EQUIPMENT_OPTIONS = [
+  {
+    id: 'none',
+    label: 'Aucun',
+    path: null
+  },
+  {
+    id: 'scope',
+    label: 'Scope',
+    path: '/models/Ultimate%20Guns%20Pack-zip/Scope/Scope_2.fbx',
+    scale: [0.01, 0.01, 0.01],
+    rotation: [0, Math.PI, 0],
+    position: [0.08, -0.02, -0.1]
+  },
+  {
+    id: 'bayonet',
+    label: 'Bayonet',
+    path: '/models/Ultimate%20Guns%20Pack-zip/Bayonet/Bayonet.fbx',
+    scale: [0.012, 0.012, 0.012],
+    rotation: [0, Math.PI, 0],
+    position: [0.08, -0.16, -0.35]
+  },
+  {
+    id: 'bipod',
+    label: 'Bipod',
+    path: '/models/Ultimate%20Guns%20Pack-zip/Bipod/Bipod.fbx',
+    scale: [0.01, 0.01, 0.01],
+    rotation: [0, Math.PI, 0],
+    position: [0.08, -0.2, -0.2]
+  }
+];
 
 const ForestExplorer = () => {
+  const [selectedWeapon, setSelectedWeapon] = useState(WEAPON_OPTIONS[0].id);
+  const [selectedEquipment, setSelectedEquipment] = useState(EQUIPMENT_OPTIONS[0].id);
+  const activeWeapon = WEAPON_OPTIONS.find((option) => option.id === selectedWeapon) ?? WEAPON_OPTIONS[0];
+  const activeEquipment = EQUIPMENT_OPTIONS.find((option) => option.id === selectedEquipment) ?? EQUIPMENT_OPTIONS[0];
+
   const mountRef = useRef(null);
   const rendererRef = useRef(null);
   const sceneRef = useRef(null);
@@ -55,48 +135,135 @@ const ForestExplorer = () => {
     scene.add(ground);
 
     const weaponGroup = new THREE.Group();
-    weaponGroup.position.set(0.35, -0.35, -0.8);
+    weaponGroup.position.set(0.28, -0.22, -0.55);
+    weaponGroup.renderOrder = 999;
     camera.add(weaponGroup);
     scene.add(camera);
 
-    const gltfLoader = new GLTFLoader();
-    gltfLoader.load(
-      '/models/weapon.glb',
-      (gltf) => {
-        const weaponModel = gltf.scene;
-        weaponModel.scale.set(0.45, 0.45, 0.45);
-        weaponModel.rotation.set(0, Math.PI, 0);
-        weaponModel.position.set(0, -0.05, 0);
+    const fbxLoader = new FBXLoader();
+    const fallbackParts = [];
+    const loadedWeaponModels = [];
+    const loadedEquipmentModels = [];
+    let isDisposed = false;
 
-        weaponModel.traverse((child) => {
-          if (child.isMesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
-          }
-        });
+    const prepareModel = (model) => {
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.renderOrder = 999;
+          child.castShadow = false;
+          child.receiveShadow = false;
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach((mat) => {
+            if (!mat) return;
+            mat.depthTest = false;
+            mat.depthWrite = false;
+            mat.metalness = 0.45;
+            mat.roughness = 0.55;
+            mat.needsUpdate = true;
+          });
+        }
+      });
+    };
 
+    const addFallbackWeapon = () => {
+      const mkMat = (color) => new THREE.MeshStandardMaterial({
+        color,
+        metalness: 0.6,
+        roughness: 0.35,
+        depthTest: false,
+        depthWrite: false
+      });
+      const fallbackBody = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.9), mkMat(0x3a3a3a));
+      fallbackBody.position.set(0, 0, 0);
+      fallbackBody.renderOrder = 999;
+      const fallbackBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.55, 10), mkMat(0x1a1a1a));
+      fallbackBarrel.rotation.x = Math.PI / 2;
+      fallbackBarrel.position.set(0, 0.04, -0.7);
+      fallbackBarrel.renderOrder = 999;
+      const fallbackGrip = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.24, 0.12), mkMat(0x222222));
+      fallbackGrip.position.set(0, -0.2, 0.1);
+      fallbackGrip.renderOrder = 999;
+      weaponGroup.add(fallbackBody, fallbackBarrel, fallbackGrip);
+      fallbackParts.push(fallbackBody, fallbackBarrel, fallbackGrip);
+    };
+
+    const clearFallbackWeapon = () => {
+      fallbackParts.forEach((part) => {
+        weaponGroup.remove(part);
+        part.geometry.dispose();
+        part.material.dispose();
+      });
+      fallbackParts.length = 0;
+    };
+
+    const fitWeaponModel = (model, config) => {
+      model.rotation.set(...config.rotation);
+
+      const box = new THREE.Box3().setFromObject(model);
+      if (!box.isEmpty()) {
+        const size = new THREE.Vector3();
+        const center = new THREE.Vector3();
+        box.getSize(size);
+        box.getCenter(center);
+
+        const maxDim = Math.max(size.x, size.y, size.z) || 1;
+        const TARGET = 0.75;
+        const fitScale = TARGET / maxDim;
+        model.scale.setScalar(fitScale);
+
+        // recentre sur l'origine puis décale selon la config
+        model.position.set(
+          -center.x * fitScale + config.position[0],
+          -center.y * fitScale + config.position[1],
+          -center.z * fitScale + config.position[2]
+        );
+      } else {
+        model.position.set(...config.position);
+      }
+    };
+
+    addFallbackWeapon();
+
+    fbxLoader.load(
+      activeWeapon.path,
+      (weaponModel) => {
+        if (isDisposed) {
+          return;
+        }
+        fitWeaponModel(weaponModel, activeWeapon);
+        prepareModel(weaponModel);
+        clearFallbackWeapon();
         weaponGroup.add(weaponModel);
+        loadedWeaponModels.push(weaponModel);
       },
       undefined,
       () => {
-        const fallbackBody = new THREE.Mesh(
-          new THREE.BoxGeometry(0.22, 0.18, 0.9),
-          new THREE.MeshStandardMaterial({ color: 0x2d2d2d, metalness: 0.6, roughness: 0.35 })
-        );
-        fallbackBody.position.set(0, -0.02, 0);
-        const fallbackBarrel = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.03, 0.03, 0.5, 12),
-          new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8, roughness: 0.3 })
-        );
-        fallbackBarrel.rotation.x = Math.PI / 2;
-        fallbackBarrel.position.set(0, 0.02, -0.67);
-        fallbackBody.castShadow = true;
-        fallbackBody.receiveShadow = true;
-        fallbackBarrel.castShadow = true;
-        fallbackBarrel.receiveShadow = true;
-        weaponGroup.add(fallbackBody, fallbackBarrel);
+        if (isDisposed) {
+          return;
+        }
+        console.warn(`Impossible de charger le modèle d'arme: ${activeWeapon.path}`);
       }
     );
+
+    if (activeEquipment.path) {
+      fbxLoader.load(
+        activeEquipment.path,
+        (equipmentModel) => {
+          if (isDisposed) {
+            return;
+          }
+          equipmentModel.scale.set(...activeEquipment.scale);
+          equipmentModel.rotation.set(...activeEquipment.rotation);
+          equipmentModel.position.set(...activeEquipment.position);
+          prepareModel(equipmentModel);
+          weaponGroup.add(equipmentModel);
+          loadedEquipmentModels.push(equipmentModel);
+        },
+        undefined,
+        () => {
+        }
+      );
+    }
 
     const makeFallbackRedDotTexture = () => {
       const canvas = document.createElement('canvas');
@@ -152,8 +319,8 @@ const ForestExplorer = () => {
       }
     );
 
-    const hipWeaponPos = new THREE.Vector3(0.35, -0.35, -0.8);
-    const aimWeaponPos = new THREE.Vector3(0.08, -0.24, -0.48);
+    const hipWeaponPos = new THREE.Vector3(0.28, -0.22, -0.55);
+    const aimWeaponPos = new THREE.Vector3(0.06, -0.18, -0.45);
     const raycaster = new THREE.Raycaster();
     const shootDirection = new THREE.Vector2(0, 0);
     const impactMarkers = [];
@@ -257,6 +424,9 @@ const ForestExplorer = () => {
     };
 
     const onContextMenu = (e) => {
+      if (e.target instanceof Element && e.target.closest('[data-ui-menu="true"]')) {
+        return;
+      }
       e.preventDefault();
     };
 
@@ -310,6 +480,9 @@ const ForestExplorer = () => {
     };
 
     const onMouseDown = (e) => {
+      if (e.target instanceof Element && e.target.closest('[data-ui-menu="true"]')) {
+        return;
+      }
       if (e.button === 0 || e.button === 2) {
         requestLookLock();
       }
@@ -427,6 +600,8 @@ const ForestExplorer = () => {
     window.addEventListener('resize', handleResize);
 
     return () => {
+      isDisposed = true;
+
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('keyup', onKeyUp);
@@ -456,6 +631,20 @@ const ForestExplorer = () => {
         line.material.dispose();
       });
 
+      fallbackParts.forEach((part) => {
+        weaponGroup.remove(part);
+        part.geometry.dispose();
+        part.material.dispose();
+      });
+
+      loadedWeaponModels.forEach((model) => {
+        weaponGroup.remove(model);
+      });
+
+      loadedEquipmentModels.forEach((model) => {
+        weaponGroup.remove(model);
+      });
+
       if (redDotMaterial.map) {
         redDotMaterial.map.dispose();
       }
@@ -467,11 +656,39 @@ const ForestExplorer = () => {
 
       renderer.dispose();
     };
-  }, []);
+  }, [activeWeapon, activeEquipment]);
 
   return (
     <div className="relative w-full h-screen overflow-hidden">
       <div ref={mountRef} className="w-full h-full" />
+      <div data-ui-menu="true" className="absolute top-4 right-4 bg-black bg-opacity-60 text-white p-4 rounded w-72">
+        <h2 className="text-lg font-bold mb-3">Sélection équipement</h2>
+        <label className="block text-sm mb-1">Arme</label>
+        <select
+          className="w-full mb-3 bg-gray-900 border border-gray-600 rounded px-2 py-1"
+          value={selectedWeapon}
+          onChange={(e) => setSelectedWeapon(e.target.value)}
+        >
+          {WEAPON_OPTIONS.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+
+        <label className="block text-sm mb-1">Équipement</label>
+        <select
+          className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1"
+          value={selectedEquipment}
+          onChange={(e) => setSelectedEquipment(e.target.value)}
+        >
+          {EQUIPMENT_OPTIONS.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
       <div className="absolute top-4 left-4 bg-black bg-opacity-50 text-white p-4 rounded max-w-sm">
         <h2 className="text-xl font-bold mb-2">Forest Explorer Controls</h2>
         <ul className="text-sm">
